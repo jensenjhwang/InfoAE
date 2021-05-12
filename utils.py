@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+import time
 
 def donsker_varadhan_loss(l, m):
     '''
@@ -69,3 +70,19 @@ def normalize_to_zero_one(x):
     Linearly transform so that min = 0, max = 1
     """
     return x - torch.min(x) / (torch.max(x) - torch.min(x))
+
+class Timer():
+    def __init__(self, name):
+        self.name = name
+        self.timer = time.time()
+    
+    def stop(self):
+        # print(f"{self.name} took {time.time() - self.timer}s")
+        pass
+
+def time_this_fn(fn):
+    def inner(*args, **kwargs):
+        start_time = time.time()
+        fn(*args, **kwargs)
+        print(f"{fn.__name__} took {time.time() - self.timer}s")
+    return inner

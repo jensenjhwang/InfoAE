@@ -15,6 +15,7 @@ from simple_dataloader import get_data_new
 from utils import *
 from config import params, baseline_suffix
 from pytorch_msssim import ssim
+from tqdm import tqdm
 
 
 # if(params['dataset'] == 'MNIST'):
@@ -44,7 +45,7 @@ plt.figure(figsize=(10, 10))
 plt.axis("off")
 plt.imshow(np.transpose(vutils.make_grid(
     sample_batch[0].to(device)[ : 100], nrow=10, padding=2, normalize=True).cpu(), (1, 2, 0)))
-plt.savefig(f"Training Images {params['dataset']}{baseline_suffix}")
+plt.savefig(f"images/Training Images {params['dataset']}{baseline_suffix}")
 plt.close('all')
 
 # Initialise the network.
@@ -57,11 +58,11 @@ decoder.apply(weights_init)
 print(decoder)
 
 if not params['is_baseline']:
-    minet_orig = MINet(1, 16).to(device)
+    minet_orig = MINet(1, params['mi_size']).to(device)
     minet_orig.apply(weights_init)
     print(minet_orig)
 
-    minet_comp = MINet(4, 16).to(device)
+    minet_comp = MINet(4, params['mi_size']).to(device)
     minet_comp.apply(weights_init)
     print(minet_comp)
 
@@ -91,7 +92,7 @@ iters = 0
 for epoch in range(params['num_epochs']):
     epoch_start_time = time.time()
 
-    for i, (data, _) in enumerate(train_load, 0):
+    for i, (data, _) in tqdm(enumerate(train_load, 0)):
         # Get batch size
         b_size = data.size(0)
         # Transfer data tensor to GPU/CPU (device)
@@ -99,14 +100,23 @@ for epoch in range(params['num_epochs']):
 
         # Updating encoder and MINets  
         optimE.zero_grad()
-        optimM.zero_grad()
+        if not params['is_baseline']:
+            optimM.zero_grad()
         
         compressed = encoder(data)
         if not params['is_baseline']:
-            d_orig = minet_orig(data).view(b_size, 16, -1)
-            d_comp = minet_comp(compressed).view(b_size, 16, -1)
-            mi_loss = donsker_varadhan_loss(d_comp, d_orig)
+            d_orig = minet_orig(data).view(b_size, params['mi_size'], -1)
+            d_comp = minet_comp(compressed).view(b_size, params['mi_size'], -1)
+
+            a = Timer("mi_loss")
+            # mi_loss = donsker_varadhan_loss(d_comp, d_orig) * params['mi_scaling']
+            mi_loss = -torch.sigmoid(-donsker_varadhan_loss(d_comp, d_orig) * params['mi_scaling'])
+            a.stop()
+            
+            a = Timer("mi_loss.backward()")
             mi_loss.backward()
+            a.stop()
+
             optimE.step()
             optimM.step() # is this right? need to check whether EM are minimizing or maximizing MI Loss
 
@@ -117,7 +127,11 @@ for epoch in range(params['num_epochs']):
         else:
             reconstructed = decoder(compressed)
         decoder_loss = mse_loss(reconstructed, data)
+
+        a = Timer("decoder_loss.backward()")
         decoder_loss.backward()
+        a.stop()
+
         optimD.step()
         if params['is_baseline']:
             optimE.step()
@@ -125,13 +139,14 @@ for epoch in range(params['num_epochs']):
         # Check progress of training.
         if i != 0 and i%100 == 0:
             if params['is_baseline']:
-                print('[%d/%d][%d/%d]\tMI_Loss: %.4f\tDecoder Loss: %.4f'
-                    % (epoch+1, params['num_epochs'], i, len(train_load), 
-                        mi_loss.item(), decoder_loss.item()))
-            else:
                 print('[%d/%d][%d/%d]\tDecoder Loss: %.4f'
                     % (epoch+1, params['num_epochs'], i, len(train_load), 
                         decoder_loss.item()))
+            else:
+                print('[%d/%d][%d/%d]\tMI_Loss: %.4f\tDecoder Loss: %.4f'
+                % (epoch+1, params['num_epochs'], i, len(train_load), 
+                    mi_loss.item(), decoder_loss.item()))
+             
 
         # Save the losses for plotting.
         if not params['is_baseline']:
@@ -140,7 +155,8 @@ for epoch in range(params['num_epochs']):
         D_losses.append(decoder_loss.item())
 
         iters += 1
-        print("Finished one iter")
+        # print("Finished one iter")
+        # print(time.time() - epoch_start_time)
 
     epoch_time = time.time() - epoch_start_time
     print("Time taken for Epoch %d: %.2fs" %(epoch + 1, epoch_time))
@@ -189,8 +205,8 @@ else:
     torch.save({
         'encoder' : encoder.state_dict(),
         'decoder' : decoder.state_dict(),
-        'mi_net_orig' : mi_net_orig.state_dict(),
-        'mi_net_comp' : mi_net_comp.state_dict(),
+        'mi_net_orig' : minet_orig.state_dict(),
+        'mi_net_comp' : minet_comp.state_dict(),
         'optimE' : optimE.state_dict(),
         'optimD' : optimD.state_dict(),
         'optimM' : optimM.state_dict(),
@@ -221,9 +237,13 @@ with torch.no_grad():
         plt.figure(figsize=(10, 10))
         plt.axis("off")
         plt.imshow(np.transpose(vutils.make_grid(compressed[visual_indices], nrow=10, padding=2, normalize=True), (1,2,0)))
-
         plt.savefig(f"images/Test_Visualization_{params['dataset']}_Epoch_{params['num_epochs']}{baseline_suffix}")
 
+        # reconstructions
+        plt.figure(figsize=(10, 10))
+        plt.axis("off")
+        plt.imshow(np.transpose(vutils.make_grid(uncompressed[visual_indices], nrow=10, padding=2, normalize=True), (1,2,0)))
+        plt.savefig(f"images/Test_Reconstructions_{params['dataset']}_Epoch_{params['num_epochs']}{baseline_suffix}")
 
 # # Generate image to check performance of trained generator.
 # with torch.no_grad():
@@ -253,7 +273,7 @@ plt.plot(D_losses,label="D")
 plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
-plt.savefig(f"Loss Curve {params['dataset']}{baseline_suffix}")
+plt.savefig(f"images/Loss Curve {params['dataset']}{baseline_suffix}")
 
 # # Animation showing the improvements of the generator.
 # fig = plt.figure(figsize=(10,10))

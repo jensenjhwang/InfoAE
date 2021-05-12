@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Encoder(nn.Module):
-    def __init__(self, c = (64, 32, 4)):
+    def __init__(self, c = (16, 8, 4)):
         super().__init__()
         
         c1, c2, c3 = c
@@ -27,13 +27,14 @@ class Encoder(nn.Module):
         return x
 
 class Decoder(nn.Module):
-    def __init__(self, c = (32, 64), input_dim = 7 * 7 * 4):
+    def __init__(self, c = (8, 16), input_dim = 7 * 7 * 4):
         super().__init__()
         
         c1, c2 = c
 
         # upsampling * 4
-        self.linear = torch.nn.Linear(input_dim, input_dim * 4 * 4)
+        # self.linear = torch.nn.Linear(input_dim, input_dim * 4 * 4)
+        self.scaler = torch.nn.Upsample(scale_factor=4)
 
         input_c = input_dim // (7 ** 2)
         self.conv1 = nn.ConvTranspose2d(input_c, c1, 3, stride=1, padding=1)
@@ -46,11 +47,12 @@ class Decoder(nn.Module):
         self.bn3 = nn.BatchNorm2d(1)
 
     def forward(self, x):
-        N, C, H, W = x.shape
-        reshaped = x.view(N, C * H * W)
-        x = F.relu(self.linear(reshaped))
-        x = x.view(N, C, H * 4, W * 4)
-        
+        # N, C, H, W = x.shape
+        # reshaped = x.view(N, C * H * W)
+        # x = F.relu(self.linear(reshaped))
+        # x = x.view(N, C, H * 4, W * 4)
+        x = self.scaler(x)
+
         # print("Hi", x.shape)
         x = F.relu(self.bn1(self.conv1(x)))
         # print(x.shape)
