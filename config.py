@@ -1,7 +1,7 @@
 # Dictionary storing network parameters.
 params = {
     'batch_size': 2,# Batch size.
-    'num_epochs': 1,# Number of epochs to train for.
+    'num_epochs': 0,# Number of epochs to train for.
     'learning_rate': 2e-4,# Learning rate.
     'beta1': 0.5,
     'beta2': 0.999,
@@ -11,6 +11,5 @@ params = {
     'mi_size': 2,
     'mi_scaling': 1, # 1e-4
     'train_separately': True, # if True, this trains the encoder completely before training the decoder.
+    'experiment_prefix': "exp" # prefix for experiment directory
 }
-
-baseline_suffix = "_Baseline" if params['is_baseline'] else ""

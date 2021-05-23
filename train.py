@@ -7,28 +7,32 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import time
 import random
+import os
+import json
+from datetime import datetime
 
-
-from models.simple_model import Encoder, Decoder
+# from models.simple_model import Encoder, Decoder
+from models.model import Encoder, Decoder
 from models.mi_net import MINet
 from simple_dataloader import get_data_new
 from utils import *
-from config import params, baseline_suffix
+from config import params
 from pytorch_msssim import ssim
 from tqdm import tqdm
 
 if params["is_baseline"]:
     params["train_separately"] = False
     print("Warning: train_separately flag should be False for baseline model, proceeding with train_separately = False")
+    params["experiment_prefix"] += "_baseline"
 
-# if(params['dataset'] == 'MNIST'):
-#     from models.mnist_model import Generator, Discriminator, DHead, QHead
-# elif(params['dataset'] == 'SVHN'):
-#     from models.svhn_model import Generator, Discriminator, DHead, QHead
-# elif(params['dataset'] == 'CelebA'):
-#     from models.celeba_model import Generator, Discriminator, DHead, QHead
-# elif(params['dataset'] == 'FashionMNIST'):
-#     from models.mnist_model import Generator, Discriminator, DHead, QHead
+now = datetime.now()
+dt_string = now.strftime("%d_%m_%Y_%H:%M:%S")
+
+experiment_dir = os.getcwd() + f'/{params["experiment_prefix"]}_{dt_string}/'
+# print(os.getcwd())
+os.makedirs(experiment_dir)
+with open(os.path.join(experiment_dir, "config.json"), 'w') as f:
+    json.dump(params, f)   # copy config 
 
 # Set random seed for reproducibility.
 seed = 1123
@@ -48,7 +52,7 @@ plt.figure(figsize=(10, 10))
 plt.axis("off")
 plt.imshow(np.transpose(vutils.make_grid(
     sample_batch[0].to(device)[ : 100], nrow=10, padding=2, normalize=True).cpu(), (1, 2, 0)))
-plt.savefig(f"images/Training Images {params['dataset']}{baseline_suffix}")
+plt.savefig(f"{experiment_dir}Training Images")
 plt.close('all')
 
 # Initialise the network.
@@ -65,7 +69,7 @@ if not params['is_baseline']:
     minet_orig.apply(weights_init)
     print(minet_orig)
 
-    minet_comp = MINet(4, params['mi_size']).to(device)
+    minet_comp = MINet(3, params['mi_size']).to(device)
     minet_comp.apply(weights_init)
     print(minet_comp)
 
@@ -201,6 +205,7 @@ if params["train_separately"]:
     for epoch in range(params['num_epochs']):
         epoch_start_time = time.time()
         for i, (data, _) in tqdm(enumerate(train_load, 0)):
+            data = data.to(device)
             compressed = encoder(data).detach()
             optimD.zero_grad()
             reconstructed = decoder(compressed)
@@ -242,10 +247,14 @@ else:
 
 
 # test evaluation
+encoder.eval()
+decoder.eval()
+
 with torch.no_grad():
     for test_data, labels in test_load:
+        test_data = test_data.to(device)
         compressed = encoder(test_data)
-        uncompressed = decoder(compressed) # ?
+        uncompressed = decoder(compressed)
 
         mse = mse_loss(test_data, uncompressed)
 
@@ -263,14 +272,16 @@ with torch.no_grad():
         visual_indices = [i * 1000 for i in range(10)]
         plt.figure(figsize=(10, 10))
         plt.axis("off")
-        plt.imshow(np.transpose(vutils.make_grid(compressed[visual_indices], nrow=10, padding=2, normalize=True), (1,2,0)))
-        plt.savefig(f"images/Test_Visualization_{params['dataset']}_Epoch_{params['num_epochs']}_Batch_{params['batch_size']}{baseline_suffix}")
+        plt.imshow(np.transpose(vutils.make_grid(compressed[visual_indices].cpu(), nrow=10, padding=2, normalize=True), (1,2,0)))
+        # plt.savefig(f"images/Test_Visualization_{params['dataset']}_Epoch_{params['num_epochs']}_Batch_{params['batch_size']}{baseline_suffix}")
+        plt.savefig(f"{experiment_dir}Test_Visualization")
 
         # reconstructions
         plt.figure(figsize=(10, 10))
         plt.axis("off")
-        plt.imshow(np.transpose(vutils.make_grid(uncompressed[visual_indices], nrow=10, padding=2, normalize=True), (1,2,0)))
-        plt.savefig(f"images/Test_Reconstructions_{params['dataset']}_Epoch_{params['num_epochs']}_Batch_{params['batch_size']}{baseline_suffix}")
+        plt.imshow(np.transpose(vutils.make_grid(uncompressed[visual_indices].cpu(), nrow=10, padding=2, normalize=True), (1,2,0)))
+        # plt.savefig(f"images/Test_Reconstructions_{params['dataset']}_Epoch_{params['num_epochs']}_Batch_{params['batch_size']}{baseline_suffix}")
+        plt.savefig(f"{experiment_dir}Test_Reconstructions")
 
 # # Generate image to check performance of trained generator.
 # with torch.no_grad():
@@ -300,7 +311,7 @@ plt.plot(D_losses,label="D")
 plt.xlabel("iterations")
 plt.ylabel("Loss")
 plt.legend()
-plt.savefig(f"images/Loss Curve {params['dataset']}{baseline_suffix}")
+plt.savefig(f"{experiment_dir}Loss Curve")
 
 # # Animation showing the improvements of the generator.
 # fig = plt.figure(figsize=(10,10))
