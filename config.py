@@ -9,7 +9,8 @@ params = {
     'dataset' : 'MNIST',# Dataset to use. Choose from {MNIST, SVHN, CelebA, FashionMNIST}. CASE MUST MATCH EXACTLY!!!!!
     'is_baseline': False,
     'mi_size': 2,
-    'mi_scaling': 1e-4,
+    'mi_scaling': 1, # 1e-4
+    'train_separately': True, # if True, this trains the encoder completely before training the decoder.
 }
 
 baseline_suffix = "_Baseline" if params['is_baseline'] else ""
