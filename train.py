@@ -21,8 +21,9 @@ from pytorch_msssim import ssim
 from tqdm import tqdm
 
 if params["is_baseline"]:
-    params["train_separately"] = False
-    print("Warning: train_separately flag should be False for baseline model, proceeding with train_separately = False")
+    if params["train_mode"] != "normal":
+        params["train_mode"] = "normal"
+        print("Warning: train_mode should be `normal' for baseline model, proceeding with train_mode = `normal'")
     params["experiment_prefix"] += "_baseline"
 
 now = datetime.now()
@@ -124,13 +125,13 @@ for epoch in range(params['num_epochs']):
             mi_loss.backward()
             a.stop()
 
-            optimE.step()
             optimM.step() # is this right? need to check whether EM are minimizing or maximizing MI Loss
 
         # Update decoder
-        if not params["train_separately"]:
+        if params["train_mode"] != 'separate':
+
             optimD.zero_grad()
-            if not params['is_baseline']:
+            if params["train_mode"] == 'normal':
                 reconstructed = decoder(compressed.detach())
             else:
                 reconstructed = decoder(compressed)
@@ -141,8 +142,11 @@ for epoch in range(params['num_epochs']):
             a.stop()
 
             optimD.step()
-            if params['is_baseline']:
-                optimE.step()
+            # if params['train_mode']:
+            #     optimE.step()
+
+        optimE.step()
+       
 
         # Check progress of training.
         if i != 0 and i%100 == 0:
@@ -151,7 +155,7 @@ for epoch in range(params['num_epochs']):
                     % (epoch+1, params['num_epochs'], i, len(train_load), 
                         decoder_loss.item()))
             else:
-                if params["train_separately"]:
+                if params["train_mode"] == 'separate':
                     print('[%d/%d][%d/%d]\tMI_Loss: %.4f'
                     % (epoch+1, params['num_epochs'], i, len(train_load), 
                         mi_loss.item()))
@@ -165,7 +169,7 @@ for epoch in range(params['num_epochs']):
         if not params['is_baseline']:
             M_losses.append(mi_loss.item())
 
-        if not params["train_separately"]:
+        if params["train_mode"] != 'separate':
             D_losses.append(decoder_loss.item())
 
         # print("Finished one iter")
@@ -201,7 +205,7 @@ for epoch in range(params['num_epochs']):
     #         }, 'checkpoint/model_epoch_%d_{}'.format(params['dataset']) %(epoch+1))
 
 # Separate decoder training
-if params["train_separately"]:
+if params["train_mode"] == "separate":
     for epoch in range(params['num_epochs']):
         epoch_start_time = time.time()
         for i, (data, _) in tqdm(enumerate(train_load, 0)):
@@ -232,7 +236,7 @@ if params['is_baseline']:
         'optimE' : optimE.state_dict(),
         'optimD' : optimD.state_dict(),
         'params' : params
-        }, 'checkpoint/model_baseline_final_{}'.format(params['dataset']))
+        }, f'{experiment_dir}model_final')
 else:
     torch.save({
         'encoder' : encoder.state_dict(),
@@ -243,7 +247,7 @@ else:
         'optimD' : optimD.state_dict(),
         'optimM' : optimM.state_dict(),
         'params' : params
-        }, 'checkpoint/model_final_{}'.format(params['dataset']))
+        }, f'{experiment_dir}model_final')
 
 
 # test evaluation
@@ -283,6 +287,9 @@ with torch.no_grad():
         # plt.savefig(f"images/Test_Reconstructions_{params['dataset']}_Epoch_{params['num_epochs']}_Batch_{params['batch_size']}{baseline_suffix}")
         plt.savefig(f"{experiment_dir}Test_Reconstructions")
 
+    results = {'mse': mse_loss, 'ssim': ssim_score}
+    with open(os.path.join(experiment_dir, "results.json"), 'w') as f:
+        json.dump(results, f)
 # # Generate image to check performance of trained generator.
 # with torch.no_grad():
 #     gen_data = netG(fixed_noise).detach().cpu()
